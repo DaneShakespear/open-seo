@@ -31,15 +31,20 @@ Live and verified on Cloudflare Workers Free.
 - Completed a one-keyword, manual-only, top-10 mobile rank check. `kre8 media outdoor advertising` returned position 1 for `https://kre8media.com/`.
 - Redeployed the Worker and verified D1, both KV namespaces, R2, both Workflows, the Access application, and its policy were retained as unchanged resources. The saved audit and rank result remained available after redeployment.
 - Verified deployed bindings for D1, KV, OAuth KV, R2, three Durable Objects, and both Workflows. Two Cron triggers are registered: every five minutes and daily at 03:17.
+- Migrated 223 unique SerpBear keywords and 31,525 historical snapshots into five recurring configurations for April Wray, Kre8Media national, Kre8Media Las Vegas, Luxury Limousines, and TSB Podiatry. Production now contains 224 tracked keywords including the original Kre8 verification keyword.
+- Connected and live-verified Google Search Console and Google Analytics for all four projects. The selected properties are April Wray (`https://aprilwray.com/`, GA4 `481285353`), Kre8Media (`https://kre8media.com/`, GA4 `295777039`), Luxury Limousines (`https://luxurylimousineoflasvegas.com/`, GA4 `383845879`), and TSB Podiatry (`sc-domain:tsbpodiatry.com`, GA4 `529021811`).
+- Completed a 50-page TSB Podiatry production audit with 66 findings and a 1,164 ms average response time.
+- Corrected the imported Las Vegas location to DataForSEO's canonical `Las Vegas,Nevada,United States` value; the local Kre8 tracker then completed 19 of 19 keywords.
+- Repaired the Infisical synthetic check so it validates the canonical `infrastructure` project instead of an obsolete four-project count; the live service and timer pass.
 
 ## Current Step
 
-Use the live instance. Future customization work starts from this fork and the native Mac development loop.
+Resolve the Workers Free workflow subrequest limit for large rank trackers, then complete the SerpBear decommission gate. Future customization work starts from this fork and the native Mac development loop.
 
 ## Current Blockers
 
 - No OpenSEO deployment blocker remains.
-- Google Search Console and Google Analytics are not configured because they were outside this implementation plan.
+- Large rank trackers cannot complete on Workers Free. Cloudflare permits only 50 subrequests per Workflow instance on Free; both-device runs therefore stop after about 25 keywords. Scheduled and manual production proof reproduced the limit. SerpBear remains unavailable for new work, but its runtime is retained until an approved resolution passes all five tracker checks.
 - Targeted Brain indexing remains pending because a callable Brain indexing tool was not available in this task.
 - The shared Infisical machine-credential exposure remains an infrastructure hot issue; OpenSEO used already-loaded named environment values without printing them.
 
