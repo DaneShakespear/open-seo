@@ -110,6 +110,19 @@ async function checkBatchLive(
       );
     }
   }
+  if (results.length === 0 && settled.length > 0) {
+    const firstFailure = settled.find(
+      (outcome): outcome is PromiseRejectedResult =>
+        outcome.status === "rejected",
+    );
+    const detail =
+      firstFailure?.reason instanceof Error
+        ? firstFailure.reason.message
+        : String(firstFailure?.reason ?? "Unknown provider error");
+    throw new Error(
+      `DataForSEO live fallback failed for ${tasks.length} task(s): ${detail}`,
+    );
+  }
   if (results.length > 0) {
     await RankTrackingRepository.insertSnapshots(
       mapResultsToSnapshotRows(ctx.runId, results),
