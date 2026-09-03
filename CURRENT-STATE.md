@@ -1,10 +1,10 @@
 # OpenSEO Current State
 
-Updated: 2026-08-28
+Updated: 2026-09-02
 
 ## Status
 
-Live and verified on Cloudflare Workers Free.
+Live and verified on Cloudflare Workers Paid. OpenSEO is the sole live rank-tracking system; SerpBear is decommissioned with its historical archives preserved.
 
 ## Completed
 
@@ -22,7 +22,7 @@ Live and verified on Cloudflare Workers Free.
 - The canonical Infisical `OPENROUTER_API_KEY` entry was verified and is eligible for runtime injection.
 - A live DataForSEO account request succeeded and reported a positive balance.
 - Fixed an upstream initialization-order defect in `scripts/dataforseo-account-usage.ts` exposed by the live provider check; the utility now completes normally.
-- Activated R2 and Zero Trust Free on the correct Cloudflare account after action-time approval. Current billable usage is `$0.00`, and Workers remains on the Free plan.
+- Activated R2 and Zero Trust Free on the correct Cloudflare account after action-time approval.
 - Created the Alchemy Cloudflare OAuth profile for account `0edf373db8a2b7539986bed528fe8794` and bootstrapped Alchemy's remote state.
 - Deployed OpenSEO to `https://open-seo-selfhost.dane-0ed.workers.dev` with telemetry disabled and Cloudflare Access limited to `dane@daneshakespear.com`.
 - Verified an unauthenticated browser is stopped at Cloudflare Access and the signed-in Dane account reaches the OpenSEO dashboard.
@@ -36,15 +36,18 @@ Live and verified on Cloudflare Workers Free.
 - Completed a 50-page TSB Podiatry production audit with 66 findings and a 1,164 ms average response time.
 - Corrected the imported Las Vegas location to DataForSEO's canonical `Las Vegas,Nevada,United States` value; the local Kre8 tracker then completed 19 of 19 keywords.
 - Repaired the Infisical synthetic check so it validates the canonical `infrastructure` project instead of an obsolete four-project count; the live service and timer pass.
+- Activated Workers Paid after approval and pinned the self-host Worker to the paid 10,000-subrequest allowance in `alchemy.run.ts`.
+- Redeployed through Alchemy/Wrangler OAuth and verified `usage_model: standard`, `limits.subrequests: 10000`, and all 37 bindings retained.
+- Completed a fresh five-tracker scheduled sweep: April Wray 51/51, Kre8Media national 33/33, Kre8Media Las Vegas 19/19, Luxury Limousines 32/32, and TSB Podiatry 89/89. Every run completed without an error and retained readable dated snapshots for every keyword.
+- Decommissioned SerpBear after the gate passed. Its container, cron, refresh script, Traefik route, DNS record, Netdata check, Command Center active entry, exclusive Infisical Serper secret, Google OAuth callback, and local credential files were removed. The final server archive remains at `tools-01:/opt/serpbear/backups/final-retirement-20260903T031300Z/`; its SQLite integrity and checksum verification passed.
 
 ## Current Step
 
-Resolve the Workers Free workflow subrequest limit for large rank trackers, then complete the SerpBear decommission gate. Future customization work starts from this fork and the native Mac development loop.
+Future customization work starts from this fork and the native Mac development loop. The infrastructure placement audit continues in its separate existing task.
 
 ## Current Blockers
 
 - No OpenSEO deployment blocker remains.
-- Large rank trackers cannot complete on Workers Free. Cloudflare permits only 50 subrequests per Workflow instance on Free; both-device runs therefore stop after about 25 keywords. Scheduled and manual production proof reproduced the limit. SerpBear remains unavailable for new work, but its runtime is retained until an approved resolution passes all five tracker checks.
 - Targeted Brain indexing remains pending because a callable Brain indexing tool was not available in this task.
 - The shared Infisical machine-credential exposure remains an infrastructure hot issue; OpenSEO used already-loaded named environment values without printing them.
 
@@ -52,7 +55,7 @@ Resolve the Workers Free workflow subrequest limit for large rank trackers, then
 
 - Native Mac development; no Docker development loop.
 - Dane-only Cloudflare deployment on `https://open-seo-selfhost.dane-0ed.workers.dev`.
-- Workers Free remains active. R2 and Zero Trust Free are active with approved overage billing. Any Workers Paid upgrade still requires action-time approval.
+- Workers Paid is active. R2 Paid and Zero Trust Free are active; Cloudflare usage remains subject to their normal included allowances and overage billing.
 - Use OAuth for Alchemy/Wrangler because the canonical stored Cloudflare API token is currently unreliable.
 
 ## Resume Command

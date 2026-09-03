@@ -371,11 +371,14 @@ export default Alchemy.Stack(
       // Site audits parse and persist batches of HTML inside Workflow steps.
       // Paid Workers permit up to five minutes; keep headroom for unusually
       // link-heavy sites after bounding page bodies and bulk-writing links.
-      // Configurable CPU limits are a paid-plan feature, and self-host
-      // deploys (cloudflare_access) may run on the free plan — which rejects
-      // them — so those get the plan default instead.
+      // Configurable limits are paid-plan features. Dane's self-host stage is
+      // intentionally on Workers Paid so large rank-check Workflows can make
+      // more than the Free plan's 50 external subrequests. Pin the paid
+      // default explicitly so the production contract is visible in source.
       ...(authMode === "cloudflare_access"
-        ? {}
+        ? stage === "selfhost"
+          ? { limits: { subrequests: 10_000 } }
+          : {}
         : { limits: { cpuMs: 300_000 } }),
       observability: {
         enabled: wrangler.observability?.enabled ?? true,
