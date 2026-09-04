@@ -12,6 +12,14 @@ const inputSchema = {
     .string()
     .uuid()
     .describe("Rank tracker ID from get_rank_tracker."),
+  keywordIds: z
+    .array(z.string().uuid())
+    .min(1)
+    .max(2000)
+    .optional()
+    .describe(
+      "Optional keyword IDs from get_rank_tracker. When provided, estimate only this targeted rerun subset.",
+    ),
   additionalKeywordCount: z
     .number()
     .int()
@@ -43,6 +51,7 @@ export const estimateRankTrackerCostTool = {
         method: z.literal("live"),
         existingKeywordCount: z.number(),
         additionalKeywordCount: z.number(),
+        isSubsetEstimate: z.boolean(),
         scheduledEstimate: z
           .object({
             scheduleInterval: z.enum(["daily", "weekly", "monthly"]),
@@ -63,13 +72,20 @@ export const estimateRankTrackerCostTool = {
     },
   },
   handler: withMcpProjectAuth(async (args: Args, context) => {
-    const estimate = await RankTrackingService.estimateCost(
-      args.trackerId,
-      args.projectId,
-      args.additionalKeywordCount,
-    );
+    const estimate = args.keywordIds
+      ? await RankTrackingService.estimateCost(
+          args.trackerId,
+          args.projectId,
+          args.additionalKeywordCount ?? 0,
+          args.keywordIds,
+        )
+      : await RankTrackingService.estimateCost(
+          args.trackerId,
+          args.projectId,
+          args.additionalKeywordCount,
+        );
     return mcpResponse({
-      text: `One live check for tracker ${args.trackerId} is estimated at $${estimate.costUsd.toFixed(4)} (${estimate.costCredits} credits): ${estimate.keywordCount} keyword${estimate.keywordCount === 1 ? "" : "s"} × ${estimate.devicesCount} device${estimate.devicesCount === 1 ? "" : "s"} = ${estimate.totalChecks} SERP checks.${estimate.additionalKeywordCount > 0 ? ` This projects ${estimate.additionalKeywordCount} additional keyword${estimate.additionalKeywordCount === 1 ? "" : "s"}.` : ""}${estimate.scheduledEstimate ? ` Its ${estimate.scheduledEstimate.scheduleInterval} queued checks have a nominal estimate of $${estimate.scheduledEstimate.costUsd.toFixed(4)} (${estimate.scheduledEstimate.costCredits} credits) each, or about $${estimate.scheduledEstimate.monthlyCostUsd.toFixed(4)} (${estimate.scheduledEstimate.monthlyCostCredits} credits) per month. Show the user that rejected, failed, or timed-out queued tasks may use additional separately billed live fallback, then use the per-check estimate as maxEstimatedScheduledCheckCredits when adding keywords.` : ""} No check was started.`,
+      text: `One ${estimate.isSubsetEstimate ? "targeted " : ""}live check for tracker ${args.trackerId} is estimated at $${estimate.costUsd.toFixed(4)} (${estimate.costCredits} credits): ${estimate.keywordCount} keyword${estimate.keywordCount === 1 ? "" : "s"} × ${estimate.devicesCount} device${estimate.devicesCount === 1 ? "" : "s"} = ${estimate.totalChecks} SERP checks.${estimate.additionalKeywordCount > 0 ? ` This projects ${estimate.additionalKeywordCount} additional keyword${estimate.additionalKeywordCount === 1 ? "" : "s"}.` : ""}${estimate.scheduledEstimate ? ` Its ${estimate.scheduledEstimate.scheduleInterval} queued checks have a nominal estimate of $${estimate.scheduledEstimate.costUsd.toFixed(4)} (${estimate.scheduledEstimate.costCredits} credits) each, or about $${estimate.scheduledEstimate.monthlyCostUsd.toFixed(4)} (${estimate.scheduledEstimate.monthlyCostCredits} credits) per month. Show the user that rejected, failed, or timed-out queued tasks may use additional separately billed live fallback, then use the per-check estimate as maxEstimatedScheduledCheckCredits when adding keywords.` : ""} No check was started.`,
       meta: buildProjectMeta(
         context,
         args.projectId,

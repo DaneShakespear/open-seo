@@ -31,7 +31,10 @@ import {
 } from "@/shared/keyword-locations";
 import { getLatestResults } from "./rankTrackingResults";
 import { toSqliteTimestamp } from "@/server/features/rank-tracking/rankTrackingTimestamps";
-import { RankTrackingKeywordService } from "./RankTrackingKeywordService";
+import {
+  RankTrackingKeywordService,
+  resolveTrackedKeywordIds,
+} from "./RankTrackingKeywordService";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -195,9 +198,14 @@ async function triggerCheck(input: {
     );
   }
 
+  const keywordIds = input.keywordIds
+    ? resolveTrackedKeywordIds(keywords, input.keywordIds)
+    : undefined;
+  const keywordCount = keywordIds?.length ?? keywords.length;
+
   if (input.maxCostCredits != null) {
     const { costCredits } = estimateRankCheckCredits(
-      keywords.length,
+      keywordCount,
       config.devices,
       config.serpDepth,
       "live",
@@ -220,8 +228,8 @@ async function triggerCheck(input: {
       organizationId: input.billingCustomer.organizationId,
       projectId: input.billingCustomer.projectId,
     },
-    keywordsTotal: input.keywordIds ? input.keywordIds.length : keywords.length,
-    keywordIds: input.keywordIds,
+    keywordsTotal: keywordCount,
+    keywordIds,
     maxCostCredits: input.maxCostCredits,
     trigger: "manual",
     workflowStartErrorMessage: "Failed to start rank check workflow",

@@ -14,6 +14,14 @@ const inputSchema = {
     .string()
     .uuid()
     .describe("Rank tracker ID from get_rank_tracker."),
+  keywordIds: z
+    .array(z.string().uuid())
+    .min(1)
+    .max(2000)
+    .optional()
+    .describe(
+      "Optional keyword IDs from get_rank_tracker. When provided, only this subset is checked and charged.",
+    ),
   maxCostCredits: z
     .number()
     .int()
@@ -30,7 +38,7 @@ export const runRankTrackerTool = {
   config: {
     title: "Run rank tracker",
     description:
-      "Start an explicit live rank check for every keyword and configured device. This spends credits: call estimate_rank_tracker_cost, show the estimate to the user, and pass the approved credit amount as maxCostCredits. A fresh estimate above that ceiling is rejected. Hosted accounts require a paid plan, while self-hosted deployments are not plan-gated. If a run is already in progress, its blocking run ID is reported without starting or charging another check. The schedule is unchanged.",
+      "Start an explicit live rank check for every keyword, or only optional keywordIds, across configured devices. This spends credits: call estimate_rank_tracker_cost with the same keywordIds, show the estimate to the user, and pass the approved credit amount as maxCostCredits. A fresh estimate above that ceiling is rejected. Hosted accounts require a paid plan, while self-hosted deployments are not plan-gated. If a run is already in progress, its blocking run ID is reported without starting or charging another check. The schedule is unchanged.",
     inputSchema,
     outputSchema: z
       .object({
@@ -52,6 +60,7 @@ export const runRankTrackerTool = {
       configId: args.trackerId,
       projectId: args.projectId,
       billingCustomer: context.billing,
+      keywordIds: args.keywordIds,
       maxCostCredits: args.maxCostCredits,
     });
     const trackerPath = `/p/${args.projectId}/rank-tracking/${args.trackerId}`;

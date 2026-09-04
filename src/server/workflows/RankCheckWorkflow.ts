@@ -11,6 +11,7 @@ import { failRunIfActive } from "@/server/features/rank-tracking/services/rankCh
 import {
   runLiveCheck,
   runQueuedCheck,
+  type LiveCheckStats,
   type QueuedCheckStats,
 } from "@/server/workflows/rankCheckPaths";
 import { pgStep } from "@/server/workflows/pgStep";
@@ -141,7 +142,9 @@ async function finalizeRankCheckRun(input: {
   projectId: string;
   billingCustomer: BillingCustomerContext;
   trigger: RankCheckParams["trigger"];
+  devices: RankCheckParams["devices"];
   batchError: string | null;
+  liveStats: LiveCheckStats | null;
   queueStats: QueuedCheckStats | null;
 }) {
   // If stale-cleanup already marked our run failed, don't overwrite that
@@ -167,10 +170,30 @@ async function finalizeRankCheckRun(input: {
 
   const keywordsTotal = run.keywordsTotal || keywordsChecked;
   const incompleteCount = keywordsTotal - keywordsChecked;
+  const expectedChecks = keywordsTotal * (input.devices === "both" ? 2 : 1);
+  const incompleteChecks = Math.max(0, expectedChecks - snapshots.length);
+
+  const providerFailures = [
+    ...(input.liveStats?.failures ?? []),
+    ...(input.queueStats?.fallbackFailures ?? []),
+  ];
+  const providerFailureSummary = providerFailures.length
+    ? providerFailures
+        .map(
+          (failure) =>
+            `"${failure.keyword}" [${failure.device}] ${failure.code}: ${failure.message}${failure.chargedCostUsd !== undefined ? ` (provider charge $${failure.chargedCostUsd.toFixed(4)})` : ""}`,
+        )
+        .join("; ")
+        .slice(0, 1600)
+    : null;
 
   let errorMessage: string | undefined;
   if (input.batchError) {
     errorMessage = `Completed ${keywordsChecked} of ${keywordsTotal} keyword(s). Error: ${input.batchError}`;
+  } else if (providerFailureSummary) {
+    errorMessage = `${incompleteChecks} of ${expectedChecks} keyword/device check(s) failed. Provider failures: ${providerFailureSummary}`;
+  } else if (incompleteChecks > 0) {
+    errorMessage = `${incompleteChecks} of ${expectedChecks} keyword/device check(s) could not be checked`;
   } else if (incompleteCount > 0) {
     errorMessage = `${incompleteCount} keyword(s) could not be checked`;
   }
@@ -336,6 +359,7 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
       console.log(`[rank-check] ${runId} loaded ${keywords.length} keywords`);
 
       let batchError: string | null = null;
+      let liveStats: LiveCheckStats | null = null;
       let queueStats: QueuedCheckStats | null = null;
 
       try {
@@ -355,7 +379,7 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
         if (trigger === "scheduled") {
           queueStats = await runQueuedCheck(step, checkContext);
         } else {
-          await runLiveCheck(step, checkContext);
+          liveStats = await runLiveCheck(step, checkContext);
         }
       } catch (error) {
         // Batch failure — snapshots for completed batches are already
@@ -371,7 +395,9 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
           projectId,
           billingCustomer,
           trigger,
+          devices,
           batchError,
+          liveStats,
           queueStats,
         }),
       );

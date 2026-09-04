@@ -131,6 +131,10 @@ function http(
 export const labsApi = () => new DataforseoLabsApi(API_BASE, http());
 export const keywordsDataApi = () => new KeywordsDataApi(API_BASE, http());
 export const serpApi = () => new SerpApi(API_BASE, http());
+// Live SERP and task_post calls can be billed even when the provider returns a
+// 5xx. Never replay them automatically; recovery must be a separately approved
+// targeted run with its own credit ceiling.
+export const billedSerpApi = () => new SerpApi(API_BASE, http(undefined, 0));
 export const businessDataApi = () => new BusinessDataApi(API_BASE, http());
 // task_post creates a billed task. A 5xx does not prove the provider skipped
 // the charge, so this client must not replay it (same rule as Lighthouse).

@@ -6,7 +6,7 @@ import {
   SerpGoogleOrganicLiveAdvancedRequestInfo,
   SerpGoogleOrganicTaskPostRequestInfo,
 } from "dataforseo-client";
-import { serpApi } from "@/server/lib/dataforseo/core";
+import { billedSerpApi, serpApi } from "@/server/lib/dataforseo/core";
 import { MAX_TASKS_PER_POST } from "@/server/lib/dataforseo/shared";
 import {
   assertOk,
@@ -87,7 +87,7 @@ export async function fetchLiveSerp(input: {
   locationCode: number;
   languageCode: string;
 }): Promise<DataforseoApiResponse<SerpLiveItem[]>> {
-  const response = await serpApi().googleOrganicLiveAdvanced([
+  const response = await billedSerpApi().googleOrganicLiveAdvanced([
     new SerpGoogleOrganicLiveAdvancedRequestInfo({
       keyword: input.keyword,
       location_code: input.locationCode,
@@ -155,7 +155,7 @@ export async function fetchRankCheckSerp(input: {
   const locationParams = input.locationName
     ? { location_name: input.locationName }
     : { location_code: input.locationCode };
-  const response = await serpApi().googleOrganicLiveAdvanced([
+  const response = await billedSerpApi().googleOrganicLiveAdvanced([
     new SerpGoogleOrganicLiveAdvancedRequestInfo({
       keyword: input.keyword,
       ...locationParams,
@@ -217,7 +217,7 @@ export async function postRankCheckTasks(input: {
   const locationParams = input.locationName
     ? { location_name: input.locationName }
     : { location_code: input.locationCode };
-  const response = await serpApi().googleOrganicTaskPost(
+  const response = await billedSerpApi().googleOrganicTaskPost(
     input.tasks.map(
       (task) =>
         new SerpGoogleOrganicTaskPostRequestInfo({
@@ -347,7 +347,7 @@ export async function fetchLocalSerp(input: {
   // Maps and Local Finder return different SDK item models; both carry an index
   // signature, so the typed items assign cleanly to the generic row shape.
   if (input.searchType === "maps") {
-    const response = await serpApi().googleMapsLiveAdvanced([
+    const response = await billedSerpApi().googleMapsLiveAdvanced([
       new SerpGoogleMapsLiveAdvancedRequestInfo({
         keyword: input.keyword,
         location_coordinate: input.locationCoordinate,
@@ -367,7 +367,7 @@ export async function fetchLocalSerp(input: {
     };
   }
 
-  const response = await serpApi().googleLocalFinderLiveAdvanced([
+  const response = await billedSerpApi().googleLocalFinderLiveAdvanced([
     new SerpGoogleLocalFinderLiveAdvancedRequestInfo({
       keyword: input.keyword,
       location_coordinate: input.locationCoordinate,

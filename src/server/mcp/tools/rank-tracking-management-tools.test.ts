@@ -217,6 +217,31 @@ describe("rank tracking management MCP tools", () => {
     expect(mocks.triggerCheck).not.toHaveBeenCalled();
   });
 
+  it("estimates a targeted keyword rerun without starting it", async () => {
+    mocks.estimateCost.mockResolvedValue({
+      costUsd: 0.008,
+      costCredits: 8,
+      keywordCount: 5,
+      devicesCount: 2,
+      totalChecks: 10,
+      method: "live",
+      existingKeywordCount: 77,
+      additionalKeywordCount: 0,
+      isSubsetEstimate: true,
+    });
+
+    const result = await estimateRankTrackerCostTool.handler(
+      { projectId, trackerId, keywordIds: [keywordId] },
+      toolContext,
+    );
+
+    expect(textContent(result)).toContain("targeted live check");
+    expect(mocks.estimateCost).toHaveBeenCalledWith(trackerId, projectId, 0, [
+      keywordId,
+    ]);
+    expect(mocks.triggerCheck).not.toHaveBeenCalled();
+  });
+
   it("returns the created run ID and emits the existing telemetry contract", async () => {
     mocks.triggerCheck.mockResolvedValue({
       ok: true,
@@ -246,6 +271,23 @@ describe("rank tracking management MCP tools", () => {
       },
     });
     expect(mocks.waitUntil).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes targeted keyword IDs into the approved run", async () => {
+    mocks.triggerCheck.mockResolvedValue({ ok: true, runId: "run_1" });
+    await runRankTrackerTool.handler(
+      {
+        projectId,
+        trackerId,
+        keywordIds: [keywordId],
+        maxCostCredits: 2,
+      },
+      toolContext,
+    );
+
+    expect(mocks.triggerCheck).toHaveBeenCalledWith(
+      expect.objectContaining({ keywordIds: [keywordId] }),
+    );
   });
 
   it("does not emit telemetry or imply another charge for an active run", async () => {

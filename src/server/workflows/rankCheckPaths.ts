@@ -13,6 +13,8 @@ import type {
 import type { RankTrackingConfig } from "@/types/schemas/rank-tracking";
 import { KEYWORDS_PER_BATCH } from "@/shared/rank-tracking";
 import { pgStep } from "@/server/workflows/pgStep";
+import { AppError } from "@/server/lib/errors";
+import { DataforseoChargedTaskError } from "@/server/lib/dataforseo/envelope";
 
 const SINGLE_ATTEMPT_STEP_CONFIG = {
   retries: { limit: 0, delay: "1 second" as const },
@@ -52,6 +54,39 @@ interface CheckContext {
   runId: string;
 }
 
+export interface LiveCheckFailure {
+  keywordId: string;
+  keyword: string;
+  device: "desktop" | "mobile";
+  code: string;
+  message: string;
+  chargedCostUsd?: number;
+}
+
+export interface LiveCheckStats {
+  checkedTasks: number;
+  failures: LiveCheckFailure[];
+}
+
+function describeLiveFailure(
+  task: RankCheckTaskInput,
+  error: unknown,
+): LiveCheckFailure {
+  const message = (error instanceof Error ? error.message : String(error))
+    .replace(/\s+/g, " ")
+    .slice(0, 300);
+  return {
+    keywordId: task.keywordId,
+    keyword: task.keyword,
+    device: task.device,
+    code: error instanceof AppError ? error.code : "INTERNAL_ERROR",
+    message,
+    ...(error instanceof DataforseoChargedTaskError
+      ? { chargedCostUsd: error.billing.costUsd }
+      : {}),
+  };
+}
+
 /** Expand keywords into one task input per keyword/device pair. */
 function expandToTaskInputs(
   keywords: KeywordEntry[],
@@ -82,7 +117,7 @@ function expandToTaskInputs(
 async function checkBatchLive(
   ctx: CheckContext,
   tasks: RankCheckTaskInput[],
-): Promise<number> {
+): Promise<LiveCheckStats> {
   const settled = await Promise.allSettled(
     tasks.map((task) =>
       ctx.client.serp
@@ -100,35 +135,24 @@ async function checkBatchLive(
     ),
   );
   const results: RankCheckResultWithDevice[] = [];
-  for (const outcome of settled) {
+  const failures: LiveCheckFailure[] = [];
+  for (const [index, outcome] of settled.entries()) {
     if (outcome.status === "fulfilled") {
       results.push(outcome.value);
     } else {
+      const failure = describeLiveFailure(tasks[index], outcome.reason);
+      failures.push(failure);
       console.error(
-        `[rank-check] ${ctx.runId} live call failed:`,
-        outcome.reason,
+        `[rank-check] ${ctx.runId} live call failed keyword_id=${failure.keywordId} device=${failure.device} code=${failure.code}: ${failure.message}`,
       );
     }
-  }
-  if (results.length === 0 && settled.length > 0) {
-    const firstFailure = settled.find(
-      (outcome): outcome is PromiseRejectedResult =>
-        outcome.status === "rejected",
-    );
-    const detail =
-      firstFailure?.reason instanceof Error
-        ? firstFailure.reason.message
-        : String(firstFailure?.reason ?? "Unknown provider error");
-    throw new Error(
-      `DataForSEO live fallback failed for ${tasks.length} task(s): ${detail}`,
-    );
   }
   if (results.length > 0) {
     await RankTrackingRepository.insertSnapshots(
       mapResultsToSnapshotRows(ctx.runId, results),
     );
   }
-  return results.length;
+  return { checkedTasks: results.length, failures };
 }
 
 /**
@@ -140,27 +164,31 @@ async function checkBatchLive(
 export async function runLiveCheck(
   step: WorkflowStep,
   ctx: CheckContext,
-): Promise<void> {
+): Promise<LiveCheckStats> {
+  const stats: LiveCheckStats = { checkedTasks: 0, failures: [] };
   for (let i = 0; i < ctx.keywords.length; i += KEYWORDS_PER_BATCH) {
     const keywordBatch = ctx.keywords.slice(i, i + KEYWORDS_PER_BATCH);
     const batchTasks = expandToTaskInputs(keywordBatch, ctx.devices);
     const batchIndex = Math.floor(i / KEYWORDS_PER_BATCH);
     const keywordsChecked = i + keywordBatch.length;
 
-    await pgStep(
+    const batchResult = await pgStep(
       step,
       `live-batch-${batchIndex}`,
       SINGLE_ATTEMPT_STEP_CONFIG,
       async () => {
-        const written = await checkBatchLive(ctx, batchTasks);
+        const result = await checkBatchLive(ctx, batchTasks);
         // Progress for the UI; finalize recounts from the DB anyway.
         await RankTrackingRepository.updateRun(ctx.runId, {
           keywordsChecked,
         });
-        return written;
+        return result;
       },
     );
+    stats.checkedTasks += batchResult.checkedTasks;
+    stats.failures.push(...batchResult.failures);
   }
+  return stats;
 }
 
 // Poll cadence for queued tasks. Standard-priority tasks complete in ~5
@@ -273,6 +301,8 @@ export interface QueuedCheckStats {
   fallbackTasks: number;
   /** Fallback tasks that produced a snapshot. */
   fallbackChecked: number;
+  /** Fallback calls that failed, with keyword/device provider detail. */
+  fallbackFailures: LiveCheckFailure[];
 }
 
 /**
@@ -338,6 +368,7 @@ export async function runQueuedCheck(
     queueCollected: 0,
     fallbackTasks: 0,
     fallbackChecked: 0,
+    fallbackFailures: [],
   };
 
   // Poll until everything is collected or the ~15 minute window closes. A
@@ -391,12 +422,14 @@ export async function runQueuedCheck(
     const batch = stragglers.slice(i, i + KEYWORDS_PER_BATCH);
     const batchIndex = Math.floor(i / KEYWORDS_PER_BATCH);
 
-    stats.fallbackChecked += await pgStep(
+    const result = await pgStep(
       step,
       `fallback-batch-${batchIndex}`,
       SINGLE_ATTEMPT_STEP_CONFIG,
       () => checkBatchLive(ctx, batch),
     );
+    stats.fallbackChecked += result.checkedTasks;
+    stats.fallbackFailures.push(...result.failures);
   }
 
   return stats;

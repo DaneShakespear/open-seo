@@ -209,6 +209,25 @@ describe("RankTrackingService management invariants", () => {
     });
   });
 
+  it("estimates only an owned targeted keyword subset", async () => {
+    mocks.getKeywordCountForConfig.mockResolvedValue(2);
+
+    await expect(
+      RankTrackingService.estimateCost("config_1", "project_1", 0, [
+        "kw_2",
+        "kw_2",
+      ]),
+    ).resolves.toMatchObject({
+      keywordCount: 1,
+      totalChecks: 2,
+      costCredits: 6,
+      existingKeywordCount: 2,
+      additionalKeywordCount: 0,
+      isSubsetEstimate: true,
+      scheduledEstimate: undefined,
+    });
+  });
+
   it("rejects a hosted unpaid run before keyword or workflow work", async () => {
     mocks.isHostedServerAuthMode.mockResolvedValue(true);
     mocks.customerHasPaidPlan.mockResolvedValue(false);
@@ -285,6 +304,41 @@ describe("RankTrackingService management invariants", () => {
     expect(mocks.beginRankCheckRun).toHaveBeenCalledWith(
       expect.objectContaining({ maxCostCredits: 12 }),
     );
+  });
+
+  it("prices and starts only the requested keyword subset", async () => {
+    mocks.beginRankCheckRun.mockResolvedValue({ ok: true, runId: "run_1" });
+
+    await expect(
+      RankTrackingService.triggerCheck({
+        configId: "config_1",
+        projectId: "project_1",
+        billingCustomer,
+        keywordIds: ["kw_2", "kw_2"],
+        maxCostCredits: 6,
+      }),
+    ).resolves.toEqual({ ok: true, runId: "run_1" });
+
+    expect(mocks.beginRankCheckRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        keywordIds: ["kw_2"],
+        keywordsTotal: 1,
+        maxCostCredits: 6,
+      }),
+    );
+  });
+
+  it("rejects unknown targeted keyword IDs before starting a run", async () => {
+    await expect(
+      RankTrackingService.triggerCheck({
+        configId: "config_1",
+        projectId: "project_1",
+        billingCustomer,
+        keywordIds: ["kw_foreign"],
+        maxCostCredits: 6,
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(mocks.beginRankCheckRun).not.toHaveBeenCalled();
   });
 
   it("rejects hosted unpaid metrics refresh before provider work", async () => {

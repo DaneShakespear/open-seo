@@ -121,17 +121,32 @@ async function estimateCost(
   configId: string,
   projectId: string,
   additionalKeywordCount = 0,
+  keywordIds?: string[],
 ) {
   const config = await getValidatedConfig(configId, projectId);
   const existingKeywordCount =
     await RankTrackingRepository.getKeywordCountForConfig(configId);
-  const keywordCount = Math.max(
-    existingKeywordCount,
-    Math.min(
-      MAX_KEYWORDS_PER_CONFIG,
-      existingKeywordCount + additionalKeywordCount,
-    ),
-  );
+  if (keywordIds && additionalKeywordCount > 0) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "Choose either targeted keywordIds or additionalKeywordCount, not both",
+    );
+  }
+  const selectedKeywordIds = keywordIds
+    ? resolveTrackedKeywordIds(
+        await RankTrackingRepository.getKeywordsForConfig(configId),
+        keywordIds,
+      )
+    : undefined;
+  const keywordCount = selectedKeywordIds
+    ? selectedKeywordIds.length
+    : Math.max(
+        existingKeywordCount,
+        Math.min(
+          MAX_KEYWORDS_PER_CONFIG,
+          existingKeywordCount + additionalKeywordCount,
+        ),
+      );
   const { costUsd, costCredits } = estimateRankCheckCredits(
     keywordCount,
     config.devices,
@@ -151,16 +166,42 @@ async function estimateCost(
     totalChecks: keywordCount * devicesCount(config.devices),
     method: "live" as const,
     existingKeywordCount,
-    additionalKeywordCount: keywordCount - existingKeywordCount,
-    scheduledEstimate: scheduleInterval
-      ? estimateScheduledRankCheckCredits(
-          keywordCount,
-          config.devices,
-          config.serpDepth,
-          scheduleInterval,
-        )
-      : undefined,
+    additionalKeywordCount: selectedKeywordIds
+      ? 0
+      : keywordCount - existingKeywordCount,
+    isSubsetEstimate: selectedKeywordIds !== undefined,
+    scheduledEstimate:
+      scheduleInterval && !selectedKeywordIds
+        ? estimateScheduledRankCheckCredits(
+            keywordCount,
+            config.devices,
+            config.serpDepth,
+            scheduleInterval,
+          )
+        : undefined,
   };
+}
+
+export function resolveTrackedKeywordIds(
+  keywords: Array<{ id: string }>,
+  requestedIds: string[],
+): string[] {
+  const uniqueIds = [...new Set(requestedIds)];
+  if (uniqueIds.length === 0) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "At least one keyword ID is required for a targeted rank check",
+    );
+  }
+  const ownedIds = new Set(keywords.map((keyword) => keyword.id));
+  const unknownIds = uniqueIds.filter((id) => !ownedIds.has(id));
+  if (unknownIds.length > 0) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `${unknownIds.length} keyword ID(s) do not belong to this tracker`,
+    );
+  }
+  return uniqueIds;
 }
 
 async function getValidatedConfig(configId: string, projectId: string) {

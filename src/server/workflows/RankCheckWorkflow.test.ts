@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   getConfigById: vi.fn(),
   getRunById: vi.fn(),
   getKeywordsForConfig: vi.fn(),
+  getSnapshotsForRun: vi.fn(),
+  updateConfig: vi.fn(),
   updateRun: vi.fn(),
   autumnCheck: vi.fn(),
   createDataforseoClient: vi.fn(),
@@ -67,12 +69,16 @@ const billingCustomer = {
 const activeRun = {
   id: "run_1",
   status: "running",
+  keywordsTotal: 1,
 };
 
 describe("rank check workflow credit ceiling", () => {
   beforeEach(() => {
     mocks.getRunById.mockResolvedValue(activeRun);
     mocks.updateRun.mockResolvedValue(undefined);
+    mocks.updateConfig.mockResolvedValue(undefined);
+    mocks.getSnapshotsForRun.mockResolvedValue([]);
+    mocks.runLiveCheck.mockResolvedValue({ checkedTasks: 0, failures: [] });
     mocks.isHostedServerAuthMode.mockResolvedValue(true);
     mocks.autumnCheck.mockResolvedValue({ balance: { remaining: 1_000 } });
   });
@@ -159,5 +165,60 @@ describe("rank check workflow credit ceiling", () => {
 
     expect(result.keywords).toHaveLength(5);
     expect(mocks.autumnCheck).not.toHaveBeenCalled();
+  });
+
+  it("persists actionable keyword/device provider failures", async () => {
+    mocks.getConfigById.mockResolvedValue({ isActive: true });
+    mocks.getKeywordsForConfig.mockResolvedValue([
+      { id: "kw_1", keyword: "las vegas limo" },
+    ]);
+    mocks.isHostedServerAuthMode.mockResolvedValue(false);
+    mocks.createDataforseoClient.mockReturnValue({});
+    mocks.runLiveCheck.mockResolvedValue({
+      checkedTasks: 0,
+      failures: [
+        {
+          keywordId: "kw_1",
+          keyword: "las vegas limo",
+          device: "mobile",
+          code: "RATE_LIMITED",
+          message: "DataForSEO HTTP 429",
+        },
+      ],
+    });
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the mocked base class does not inspect Worker constructor context
+    const workflow = new RankCheckWorkflow({} as ExecutionContext, {} as Env);
+
+    await workflow.run(
+      {
+        instanceId: "run_1",
+        timestamp: new Date(),
+        payload: {
+          runId: "run_1",
+          configId: "config_1",
+          billingCustomer,
+          projectId: "project_1",
+          domain: "example.com",
+          locationCode: 2840,
+          languageCode: "en",
+          devices: "mobile",
+          serpDepth: 10,
+          trigger: "manual",
+        },
+      },
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- workflow steps are executed directly by the pgStep mock
+      {} as WorkflowStep,
+    );
+
+    expect(mocks.updateRun).toHaveBeenCalledWith(
+      "run_1",
+      expect.objectContaining({
+        status: "completed",
+        // oxlint-disable-next-line typescript/no-unsafe-assignment -- Vitest asymmetric matcher is intentionally dynamic
+        errorMessage: expect.stringContaining(
+          '"las vegas limo" [mobile] RATE_LIMITED: DataForSEO HTTP 429',
+        ),
+      }),
+    );
   });
 });
