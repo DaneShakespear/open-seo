@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
+import { AppError } from "@/server/lib/errors";
 import { resolveCloudflareAccessContext } from "./cloudflareAccess";
 import { resolveLocalNoAuthContext } from "./delegated";
 import { resolveHostedContext } from "./hosted";
@@ -18,5 +19,11 @@ export async function resolveUserContextFromHeaders(
   if (isHostedAuthMode(authMode)) {
     return resolveHostedContext(headers);
   }
-  return resolveCloudflareAccessContext(headers);
+  const context = await resolveCloudflareAccessContext(headers);
+  // Service tokens are only accepted on /mcp. Every other route still
+  // requires a human Access identity.
+  if (!context) {
+    throw new AppError("FORBIDDEN");
+  }
+  return context;
 }

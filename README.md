@@ -52,6 +52,17 @@ OpenSEO supports two self-hosting paths:
 
 Either way, you need a DataForSEO API key to get SEO data. See [`docs/DATAFORSEO_API_KEY.md`](./docs/DATAFORSEO_API_KEY.md).
 
+### Service token for `/mcp`
+
+A machine client such as MetaMCP cannot complete a browser Access login. On a Cloudflare Access deployment, an allowlisted service token may call `/mcp` as an existing user. Signature, audience, and issuer checks stay the same. Every other route still requires a human Access login.
+
+Set these Worker variables. Do not commit the service-token client secret, and do not put real values in `wrangler.jsonc`:
+
+- `ACCESS_SERVICE_TOKEN_ALLOWLIST` — comma-separated Access service-token client IDs
+- `ACCESS_SERVICE_TOKEN_USER_EMAIL` — email of an existing user. The token acts as that user and their workspace. OpenSEO does not create the user.
+
+Local values go in `.dev.vars` (start from [`.dev.vars.example`](./.dev.vars.example)). Self-host deploys read them from `.env.selfhost`.
+
 ## Costs
 
 OpenSEO needs a [DataForSEO](https://dataforseo.com/?aff=255379) API key so that you can get SEO data. You pay them directly when self hosting.

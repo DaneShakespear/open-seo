@@ -71,7 +71,7 @@ backend for installs that outgrow D1 — see
 
 ## Auth Modes
 
-- `AUTH_MODE=cloudflare_access` (default): validates Cloudflare Access JWTs (`cf-access-jwt-assertion`) using `TEAM_DOMAIN` + `POLICY_AUD`.
+- `AUTH_MODE=cloudflare_access` (default): validates Cloudflare Access JWTs (`cf-access-jwt-assertion`) using `TEAM_DOMAIN` + `POLICY_AUD`. Optional: `ACCESS_SERVICE_TOKEN_ALLOWLIST` and `ACCESS_SERVICE_TOKEN_USER_EMAIL` let an allowlisted service token call `/mcp` as an existing user (see `.dev.vars.example`). Never put the client secret in those variables.
 - `AUTH_MODE=local_noauth`: local trusted mode, no auth check, injects `admin@localhost`.
 - `AUTH_MODE=hosted`: Better Auth-backed email/password mode. Requires Better Auth schema generation plus `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`.
 

@@ -20,6 +20,11 @@ declare namespace Cloudflare {
     BYPASS_EMAIL_VERIFICATION?: string;
     TEAM_DOMAIN?: string;
     POLICY_AUD?: string;
+    // Comma-separated Cloudflare Access service-token client IDs allowed to
+    // call /mcp. The client secret is never configured here.
+    ACCESS_SERVICE_TOKEN_ALLOWLIST?: string;
+    // Email of an existing user those service tokens act as. Not created.
+    ACCESS_SERVICE_TOKEN_USER_EMAIL?: string;
     POSTHOG_PUBLIC_KEY?: string;
     POSTHOG_HOST?: string;
     BETTER_AUTH_SECRET?: string;

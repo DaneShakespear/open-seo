@@ -71,6 +71,12 @@
       "new_sqlite_classes": ["AuditScratchpad"],
     },
   ],
+  // Optional. Names only — set values in `.dev.vars` (local) or `.env.selfhost`
+  // (Alchemy deploy). Never commit a service-token client secret.
+  "vars": {
+    "ACCESS_SERVICE_TOKEN_ALLOWLIST": "",
+    "ACCESS_SERVICE_TOKEN_USER_EMAIL": "",
+  },
   "triggers": {
     // Every 5 min: rank checks + stale-audit reconcile. Daily: OAuth KV GC.
     // Dispatched on controller.cron in src/server.ts `scheduled`.

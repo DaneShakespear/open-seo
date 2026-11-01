@@ -66,6 +66,12 @@
       "POLICY_AUD": {
         "description": "Cloudflare Access Application Audience (AUD) tag for this Worker route/domain."
       },
+      "ACCESS_SERVICE_TOKEN_ALLOWLIST": {
+        "description": "Comma-separated Cloudflare Access service-token client IDs allowed to call /mcp. Do not put the client secret here."
+      },
+      "ACCESS_SERVICE_TOKEN_USER_EMAIL": {
+        "description": "Email of an existing user that allowlisted Access service tokens act as on /mcp. The user is not created."
+      },
       "DATAFORSEO_API_KEY": {
         "description": "Base64-encoded `login:password` for DataForSEO API access."
       },
