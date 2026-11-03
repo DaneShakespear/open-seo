@@ -172,7 +172,7 @@ describe("handleSelfHostedOpenSeoMcpRequest", () => {
     expect(response.status).toBe(200);
     expect(
       selfHostedAuthMocks.resolveCloudflareAccessContext,
-    ).toHaveBeenCalledWith(expect.any(Headers));
+    ).toHaveBeenCalledWith(expect.any(Headers), { pathname: "/mcp" });
     expect(selfHostedAuthMocks.createOpenSeoMcpServer).toHaveBeenCalledWith({
       [MCP_AUTH_CONTEXT_PROP]: {
         userId: "cloudflare-user",
@@ -181,6 +181,20 @@ describe("handleSelfHostedOpenSeoMcpRequest", () => {
         baseUrl: "https://open-seo.test",
       },
     });
+  });
+
+  it("rejects an unknown service token with 403 instead of throwing", async () => {
+    selfHostedAuthMocks.resolveCloudflareAccessContext.mockResolvedValue(null);
+
+    const response = await handleSelfHostedOpenSeoMcpRequest(
+      createMcpRequest(),
+      "cloudflare_access",
+      {},
+      ctx,
+    );
+
+    expect(response.status).toBe(403);
+    expect(selfHostedAuthMocks.createOpenSeoMcpServer).not.toHaveBeenCalled();
   });
 
   it("answers OPTIONS preflight without resolving an auth context", async () => {

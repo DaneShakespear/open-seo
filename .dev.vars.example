@@ -1,0 +1,8 @@
+# Local Worker variables for `wrangler dev` / Vite. Copy to `.dev.vars`.
+# `.dev.vars` is gitignored. Do not put a service-token client secret here.
+
+# Comma-separated Cloudflare Access service-token client IDs allowed to call /mcp.
+ACCESS_SERVICE_TOKEN_ALLOWLIST=
+
+# Email of an existing user those tokens act as. The user is not created.
+ACCESS_SERVICE_TOKEN_USER_EMAIL=

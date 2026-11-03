@@ -26,6 +26,15 @@ MCP clients should connect to:
 https://YOUR_WORKER_HOSTNAME/mcp
 ```
 
+### Service token (no browser login)
+
+Some clients, including MetaMCP, cannot complete the Access browser login. A Cloudflare Access service token can call `/mcp` as an existing user when both of these Worker variables are set:
+
+- `ACCESS_SERVICE_TOKEN_ALLOWLIST` — comma-separated service-token client IDs (`CF-Access-Client-Id`). The client secret stays in the client that calls Access. Do not put it in OpenSEO's config.
+- `ACCESS_SERVICE_TOKEN_USER_EMAIL` — email of a user who has already signed in. The token uses that user and the shared workspace. OpenSEO does not create a user.
+
+Set them in `.env.selfhost` and redeploy. `wrangler.jsonc` only declares the names. The Access application must allow that service token. Other routes still require a human login, and a client ID that is not on the list receives 403.
+
 ## Telemetry
 
 OpenSEO collects anonymized telemetry for core usage events: heartbeats with aggregate counts (installs, users, projects, feature usage) tied to a random install ID, sent every 5 minutes during the first two hours after install, then at most once daily. No URLs, keywords, prompts, emails, or IP-derived location are collected, and idle installs send nothing.

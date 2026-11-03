@@ -92,6 +92,28 @@ export async function resolveSharedWorkspaceContext(
   };
 }
 
+// Service-token callers act as a user who already signed in. Never insert a
+// user row: a typo in the mapped email must fail closed, not provision one.
+export async function resolveExistingSharedWorkspaceUser(
+  email: string,
+): Promise<EnsuredUserContext | null> {
+  const existing = await db.query.user.findFirst({
+    columns: { id: true, email: true },
+    where: eq(user.email, email),
+  });
+
+  if (!existing) return null;
+
+  const organizationId = await ensureSharedWorkspaceOrganization();
+
+  return {
+    userId: existing.id,
+    userEmail: existing.email,
+    emailVerified: true,
+    organizationId,
+  };
+}
+
 export async function resolveLocalNoAuthContext(): Promise<EnsuredUserContext> {
   return resolveDelegatedContext(LOCAL_ADMIN_USER_ID, LOCAL_ADMIN_EMAIL);
 }

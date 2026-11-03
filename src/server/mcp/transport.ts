@@ -10,6 +10,7 @@ import {
 import { getHostedBaseUrl } from "@/lib/auth";
 import { MCP_SCOPE } from "@/lib/oauth-resource";
 import { resolveCloudflareAccessContext } from "@/middleware/ensure-user/cloudflareAccess";
+import { responseForAppError } from "@/server/lib/http-errors";
 import { resolveLocalNoAuthContext } from "@/middleware/ensure-user/delegated";
 import {
   createWorkersOAuthMcpProps,
@@ -187,10 +188,20 @@ export async function handleSelfHostedOpenSeoMcpRequest(
     return new Response(null, { headers: MCP_CORS_HEADERS });
   }
 
-  const identity =
-    authMode === "local_noauth"
-      ? await resolveLocalNoAuthContext()
-      : await resolveCloudflareAccessContext(request.headers);
+  let identity;
+  try {
+    identity =
+      authMode === "local_noauth"
+        ? await resolveLocalNoAuthContext()
+        : await resolveCloudflareAccessContext(request.headers, {
+            pathname: new URL(request.url).pathname,
+          });
+  } catch (error) {
+    return withMcpCors(responseForAppError(error, "Internal Server Error"));
+  }
+  if (!identity) {
+    return withMcpCors(new Response("Forbidden", { status: 403 }));
+  }
   const props = createWorkersOAuthMcpProps({
     userId: identity.userId,
     userEmail: identity.userEmail,

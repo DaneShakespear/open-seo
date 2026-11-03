@@ -391,6 +391,9 @@ export async function handleSelfHostedGoogleOAuthCallbackRequest(
       authMode === "local_noauth"
         ? await resolveLocalNoAuthContext()
         : await resolveCloudflareAccessContext(request.headers);
+    if (!context) {
+      return new Response("Forbidden", { status: 403 });
+    }
     return await handleSelfHostedGoogleOAuthCallback({
       integration,
       request,

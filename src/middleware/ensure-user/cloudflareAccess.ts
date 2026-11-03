@@ -1,9 +1,13 @@
 import { env } from "cloudflare:workers";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { MCP_ROUTE } from "@/server/mcp/context";
 import { AppError } from "@/server/lib/errors";
 import { validateTeamDomain } from "@/shared/selfhost-checks";
 import { classifyAccessVerificationError } from "./accessTokenErrors";
-import { resolveSharedWorkspaceContext } from "./delegated";
+import {
+  resolveExistingSharedWorkspaceUser,
+  resolveSharedWorkspaceContext,
+} from "./delegated";
 import type { EnsuredUserContext } from "./types";
 
 const jwksByTeamDomain = new Map<
@@ -36,9 +40,51 @@ function getValidatedTeamDomain(teamDomain: string) {
   return result.origin;
 }
 
+function serviceTokenAllowlist() {
+  return new Set(
+    (env.ACCESS_SERVICE_TOKEN_ALLOWLIST ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0),
+  );
+}
+
+// Access service-token JWTs carry the token client ID in `common_name` and an
+// empty `sub`. Human JWTs have a non-empty `sub` (and may also carry
+// `common_name` for mTLS), so they stay on the human path.
+function readServiceTokenClientId(payload: JWTPayload) {
+  const sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
+  if (sub.length > 0) return null;
+
+  const commonName = payload.common_name;
+  if (typeof commonName !== "string") return null;
+
+  const clientId = commonName.trim();
+  return clientId.length > 0 ? clientId : null;
+}
+
+async function resolveServiceTokenContext(
+  clientId: string,
+  pathname: string | undefined,
+): Promise<EnsuredUserContext | null> {
+  if (pathname !== MCP_ROUTE) return null;
+  if (!serviceTokenAllowlist().has(clientId)) return null;
+
+  const email = env.ACCESS_SERVICE_TOKEN_USER_EMAIL?.trim() ?? "";
+  if (!email) {
+    throw new AppError(
+      "AUTH_CONFIG_MISSING",
+      "ACCESS_SERVICE_TOKEN_USER_EMAIL is unset. Set it to the email of an existing user before an allowlisted Cloudflare Access service token can call /mcp.",
+    );
+  }
+
+  return resolveExistingSharedWorkspaceUser(email);
+}
+
 export async function resolveCloudflareAccessContext(
   headers: Headers,
-): Promise<EnsuredUserContext> {
+  options?: { pathname?: string },
+): Promise<EnsuredUserContext | null> {
   const teamDomain = env.TEAM_DOMAIN
     ? getValidatedTeamDomain(env.TEAM_DOMAIN)
     : null;
@@ -85,6 +131,11 @@ export async function resolveCloudflareAccessContext(
     console.error("Cloudflare Access token verification failed:", error);
 
     throw classifyAccessVerificationError(error);
+  }
+
+  const serviceTokenClientId = readServiceTokenClientId(payload);
+  if (serviceTokenClientId) {
+    return resolveServiceTokenContext(serviceTokenClientId, options?.pathname);
   }
 
   const userId = typeof payload.sub === "string" ? payload.sub : null;
