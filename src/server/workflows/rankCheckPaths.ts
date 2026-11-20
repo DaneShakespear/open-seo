@@ -11,7 +11,10 @@ import type {
   RankCheckTaskInput,
 } from "@/server/lib/dataforseo";
 import type { RankTrackingConfig } from "@/types/schemas/rank-tracking";
-import { KEYWORDS_PER_BATCH } from "@/shared/rank-tracking";
+import {
+  isDataforseoPaymentFailureSignal,
+  KEYWORDS_PER_BATCH,
+} from "@/shared/rank-tracking";
 import { pgStep } from "@/server/workflows/pgStep";
 import { AppError } from "@/server/lib/errors";
 import { DataforseoChargedTaskError } from "@/server/lib/dataforseo/envelope";
@@ -226,6 +229,8 @@ interface CollectRoundOutcome {
   stillPending: PostedRankCheckTask[];
   /** Tasks DataForSEO failed — route to the live fallback. */
   failed: PostedRankCheckTask[];
+  /** Account-level payment failures. Live fallback would fail the same way. */
+  paymentFailures: LiveCheckFailure[];
 }
 
 /**
@@ -240,6 +245,7 @@ async function collectQueuedRound(
   const completed: RankCheckResultWithDevice[] = [];
   const stillPending: PostedRankCheckTask[] = [];
   const failed: PostedRankCheckTask[] = [];
+  const paymentFailures: LiveCheckFailure[] = [];
 
   for (let i = 0; i < tasks.length; i += TASK_GET_CONCURRENCY) {
     const chunk = tasks.slice(i, i + TASK_GET_CONCURRENCY);
@@ -268,7 +274,22 @@ async function collectQueuedRound(
         console.warn(
           `[rank-check] ${ctx.runId} task ${task.taskId} failed: ${result.value.message}`,
         );
-        failed.push(task);
+        if (
+          isDataforseoPaymentFailureSignal(
+            result.value.code,
+            result.value.message,
+          )
+        ) {
+          paymentFailures.push({
+            keywordId: task.keywordId,
+            keyword: task.keyword,
+            device: task.device,
+            code: result.value.code ?? "DATAFORSEO_PAYMENT_REQUIRED",
+            message: result.value.message,
+          });
+        } else {
+          failed.push(task);
+        }
       } else {
         completed.push({ ...result.value.result, device: task.device });
       }
@@ -288,7 +309,7 @@ async function collectQueuedRound(
     });
   }
 
-  return { collected: completed.length, stillPending, failed };
+  return { collected: completed.length, stillPending, failed, paymentFailures };
 }
 
 /** Per-run accounting for the queued path, in keyword/device task units. */
@@ -325,6 +346,7 @@ export async function runQueuedCheck(
   // chunk's pairs go to the live fallback instead.
   let pending: PostedRankCheckTask[] = [];
   const fallback: RankCheckTaskInput[] = [];
+  const paymentFailures: LiveCheckFailure[] = [];
   for (let i = 0; i < taskInputs.length; i += MAX_TASKS_PER_POST) {
     const chunk = taskInputs.slice(i, i + MAX_TASKS_PER_POST);
     const postIndex = Math.floor(i / MAX_TASKS_PER_POST);
@@ -349,6 +371,14 @@ export async function runQueuedCheck(
         `[rank-check] ${ctx.runId} post-tasks-${postIndex} failed:`,
         error,
       );
+      const message = error instanceof Error ? error.message : String(error);
+      const code = error instanceof AppError ? error.code : undefined;
+      if (isDataforseoPaymentFailureSignal(code, message)) {
+        paymentFailures.push(
+          ...chunk.map((task) => describeLiveFailure(task, error)),
+        );
+        continue;
+      }
       fallback.push(...chunk);
       continue;
     }
@@ -368,7 +398,7 @@ export async function runQueuedCheck(
     queueCollected: 0,
     fallbackTasks: 0,
     fallbackChecked: 0,
-    fallbackFailures: [],
+    fallbackFailures: paymentFailures,
   };
 
   // Poll until everything is collected or the ~15 minute window closes. A
@@ -403,6 +433,7 @@ export async function runQueuedCheck(
     stats.queueCollected += outcome.collected;
     pending = [...outcome.stillPending, ...overflow];
     fallback.push(...outcome.failed);
+    stats.fallbackFailures.push(...outcome.paymentFailures);
   }
 
   // Live fallback: queued tasks that never finished, failed, or were rejected

@@ -150,9 +150,12 @@ export async function runScheduledRankChecks(env: Env) {
         continue;
       }
 
-      // Claim the slot before starting. Clearing lastSkipReason here is what
-      // lets an upgraded org drop the "plan_required" badge — the workflow only
-      // writes null on a fully successful run.
+      // Claim the slot before starting so a slow run is not due again on the
+      // next tick. settleRankCheckRun replaces this claim: a run that stored
+      // results schedules from its completion time, and a run that stored
+      // nothing pulls the slot back to a short retry. Clearing lastSkipReason
+      // here is what lets an upgraded org drop the "plan_required" badge — the
+      // workflow only writes null on a fully successful run.
       const claimed = await RankTrackingRepository.claimDueConfig({
         configId: config.id,
         projectId: config.projectId,
