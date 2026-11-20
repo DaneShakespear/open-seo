@@ -206,6 +206,25 @@ export function RankTrackingDomainDetail({
         </div>
       )}
 
+      {config.lastSkipReason === "dataforseo_payment_required" && (
+        <div className="alert alert-warning text-sm py-2">
+          <AlertTriangle className="size-4" />
+          <span>
+            Last rank check failed because DataForSEO requires payment. It will
+            be retried automatically.
+          </span>
+        </div>
+      )}
+
+      {config.lastSkipReason === "no_results" && (
+        <div className="alert alert-warning text-sm py-2">
+          <AlertTriangle className="size-4" />
+          <span>
+            Last rank check stored no results. It will be retried automatically.
+          </span>
+        </div>
+      )}
+
       {latestRun?.maybeStale && (
         <div className="alert alert-warning text-sm py-2">
           <AlertTriangle className="size-4" />

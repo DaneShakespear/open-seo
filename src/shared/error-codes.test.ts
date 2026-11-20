@@ -21,5 +21,6 @@ describe("shouldCaptureAppErrorCode", () => {
     // the billing codes reportable, don't suppress them.
     expect(shouldCaptureAppErrorCode("BACKLINKS_BILLING_ISSUE")).toBe(true);
     expect(shouldCaptureAppErrorCode("AI_SEARCH_BILLING_ISSUE")).toBe(true);
+    expect(shouldCaptureAppErrorCode("DATAFORSEO_PAYMENT_REQUIRED")).toBe(true);
   });
 });

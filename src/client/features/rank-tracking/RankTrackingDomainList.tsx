@@ -240,6 +240,18 @@ function DomainRow({
             Scheduled check skipped — paid plan required
           </p>
         )}
+        {summary.lastSkipReason === "dataforseo_payment_required" && (
+          <p className="flex items-center gap-1 text-xs text-warning">
+            <AlertTriangle className="size-3" />
+            Rank check failed — DataForSEO payment required
+          </p>
+        )}
+        {summary.lastSkipReason === "no_results" && (
+          <p className="flex items-center gap-1 text-xs text-warning">
+            <AlertTriangle className="size-3" />
+            Rank check stored no results and will be retried
+          </p>
+        )}
       </div>
       <div className="hidden sm:flex items-center gap-6 text-sm pointer-events-none">
         {summary.keywordCount > 0 && (

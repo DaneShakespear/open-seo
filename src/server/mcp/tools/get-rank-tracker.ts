@@ -13,6 +13,7 @@ import {
   type McpTableColumn,
 } from "@/server/mcp/table";
 import { projectIdSchema } from "@/server/mcp/schemas";
+import { rankTrackerHealth } from "@/shared/rank-tracking";
 
 const RANK_RESULT_COLUMNS: McpTableColumn<unknown>[] = [
   { header: "keyword", value: (row) => readPath(row, "keyword") },
@@ -46,7 +47,7 @@ export const getRankTrackerTool = {
   config: {
     title: "Get rank tracker",
     description:
-      "Read-only access to rank tracker configs and their latest results. With `trackerId`, returns config + latest snapshot per keyword, including `trackingKeywordId` for removals. Without it, lists all trackers in the project. Uses no credits. Use create_rank_tracker when no tracker exists; then use add_rank_tracking_keywords, remove_rank_tracking_keywords, estimate_rank_tracker_cost, or run_rank_tracker to manage it. `lastCheckedAt` shows position freshness.",
+      "Read-only access to rank tracker configs and their latest results. With `trackerId`, returns config + latest snapshot per keyword, including `trackingKeywordId` for removals. Without it, lists all trackers in the project. Uses no credits. Use create_rank_tracker when no tracker exists; then use add_rank_tracking_keywords, remove_rank_tracking_keywords, estimate_rank_tracker_cost, or run_rank_tracker to manage it. `lastSuccessfulRunAt` is the last check that stored results. `lastFailureReason` is why the latest attempt failed (`dataforseo_payment_required` when DataForSEO returns HTTP 402 or status 40200). `lastCheckedAt` on the latest run is snapshot freshness.",
     inputSchema,
     outputSchema: z
       .object({
@@ -55,6 +56,8 @@ export const getRankTrackerTool = {
         results: z
           .object({
             rows: z.array(looseObjectOutputSchema),
+            lastSuccessfulRunAt: z.string().nullable(),
+            lastFailureReason: z.string().nullable(),
             run: z
               .object({
                 id: z.string(),
@@ -103,9 +106,12 @@ export const getRankTrackerTool = {
       args.trackerId,
       args.projectId,
     );
+    const health = rankTrackerHealth(config);
     const text = [
       `Tracker ${config.id} (${config.domain}):`,
       `Schedule: ${config.scheduleInterval}, devices: ${config.devices}, depth: ${config.serpDepth}`,
+      `Last successful run: ${health.lastSuccessfulRunAt ?? "never"}`,
+      `Last failure reason: ${health.lastFailureReason ?? "none"}`,
       `Latest run: ${results.run?.lastCheckedAt ?? "never"}`,
       results.run?.status === "failed"
         ? `Latest run failed: ${results.run.errorMessage ?? "Unknown error"}`
@@ -124,7 +130,10 @@ export const getRankTrackerTool = {
         args.projectId,
         `/p/${args.projectId}/rank-tracking/${args.trackerId}`,
       ),
-      structuredContent: { config, results },
+      structuredContent: {
+        config: { ...config, ...health },
+        results: { ...results, ...health },
+      },
     });
   }),
 };

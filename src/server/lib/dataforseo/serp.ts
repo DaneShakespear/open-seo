@@ -7,6 +7,7 @@ import {
   SerpGoogleOrganicTaskPostRequestInfo,
 } from "dataforseo-client";
 import { billedSerpApi, serpApi } from "@/server/lib/dataforseo/core";
+import { createDataforseoBillingClassifier } from "@/server/lib/dataforseoBillingClassification";
 import { MAX_TASKS_PER_POST } from "@/server/lib/dataforseo/shared";
 import {
   assertOk,
@@ -17,6 +18,12 @@ import {
   type DataforseoApiResponse,
 } from "@/server/lib/dataforseo/envelope";
 import { AppError } from "@/server/lib/errors";
+
+const classifyRankCheckBillingError = createDataforseoBillingClassifier({
+  pathPrefix: "/serp/",
+  billingIssueCode: "DATAFORSEO_PAYMENT_REQUIRED",
+  billingIssueMessage: "DataForSEO payment required",
+});
 
 /** DataForSEO bills SERPs in pages of 10; depth outside 10-100 is rejected. */
 function clampSerpDepth(depth: number): number {
@@ -155,7 +162,9 @@ export async function fetchRankCheckSerp(input: {
   const locationParams = input.locationName
     ? { location_name: input.locationName }
     : { location_code: input.locationCode };
-  const response = await billedSerpApi().googleOrganicLiveAdvanced([
+  const response = await billedSerpApi(
+    classifyRankCheckBillingError,
+  ).googleOrganicLiveAdvanced([
     new SerpGoogleOrganicLiveAdvancedRequestInfo({
       keyword: input.keyword,
       ...locationParams,
@@ -169,7 +178,12 @@ export async function fetchRankCheckSerp(input: {
 
   // "No Search Results" (40501) is valid for obscure/new keywords — treat as an
   // empty result set rather than failing the whole rank-tracking run.
-  const task = assertOk(response, { treatNoResultsAsEmpty: true });
+  // 402 / 40200 is not an empty SERP: it means the DataForSEO account cannot pay.
+  const task = assertOk(response, {
+    treatNoResultsAsEmpty: true,
+    classify: classifyRankCheckBillingError,
+    classifyPath: "/v3/serp/google/organic/live/advanced",
+  });
   const items = parseTaskItems(
     "google-organic-live-advanced",
     task,
@@ -217,7 +231,9 @@ export async function postRankCheckTasks(input: {
   const locationParams = input.locationName
     ? { location_name: input.locationName }
     : { location_code: input.locationCode };
-  const response = await billedSerpApi().googleOrganicTaskPost(
+  const response = await billedSerpApi(
+    classifyRankCheckBillingError,
+  ).googleOrganicTaskPost(
     input.tasks.map(
       (task) =>
         new SerpGoogleOrganicTaskPostRequestInfo({
@@ -240,9 +256,13 @@ export async function postRankCheckTasks(input: {
   );
 
   if (!response || response.status_code !== 20000) {
-    throw new AppError(
-      "INTERNAL_ERROR",
-      response?.status_message || "DataForSEO task_post failed",
+    const message = response?.status_message || "DataForSEO task_post failed";
+    throw (
+      classifyRankCheckBillingError(
+        response?.status_code,
+        message,
+        "/v3/serp/google/organic/task_post",
+      ) ?? new AppError("INTERNAL_ERROR", message)
     );
   }
 
@@ -256,11 +276,17 @@ export async function postRankCheckTasks(input: {
   );
   const posted: PostedRankCheckTask[] = [];
   let costUsd = 0;
+  let billingError: AppError | null = null;
   for (const entry of response.tasks ?? []) {
     costUsd += entry.cost ?? 0;
     const tag: unknown = entry.data?.tag;
     const task = typeof tag === "string" ? byTag.get(tag) : undefined;
     if (entry.status_code !== 20100 || !entry.id || !task) {
+      billingError ??= classifyRankCheckBillingError(
+        entry.status_code,
+        entry.status_message ?? "",
+        "/v3/serp/google/organic/task_post",
+      );
       console.warn(
         `dataforseo.task_post.rejected-entry (${entry.status_code}): ${entry.status_message}`,
       );
@@ -268,6 +294,10 @@ export async function postRankCheckTasks(input: {
     }
     posted.push({ ...task, taskId: entry.id });
   }
+  // A payment failure with nothing accepted is the account, not one keyword.
+  // Returning an empty list let the rank check finish as a successful run
+  // that stored zero snapshots.
+  if (posted.length === 0 && billingError) throw billingError;
 
   return {
     data: posted,
@@ -280,7 +310,7 @@ export async function postRankCheckTasks(input: {
 
 type RankCheckTaskOutcome =
   | { status: "pending" }
-  | { status: "failed"; message: string }
+  | { status: "failed"; message: string; code?: string }
   | { status: "completed"; result: RankCheckResult };
 
 /**
@@ -296,7 +326,9 @@ export async function fetchRankCheckTaskResult(input: {
   keyword: string;
   targetDomain: string;
 }): Promise<RankCheckTaskOutcome> {
-  const response = await serpApi().googleOrganicTaskGetAdvanced(input.taskId);
+  const response = await serpApi(
+    classifyRankCheckBillingError,
+  ).googleOrganicTaskGetAdvanced(input.taskId);
   const task = response?.tasks?.[0];
   if (!response || response.status_code !== 20000 || !task) {
     throw new AppError(
@@ -313,10 +345,17 @@ export async function fetchRankCheckTaskResult(input: {
     // "No Search Results" is valid for obscure/new keywords — same treatment
     // as the live path's treatNoResultsAsEmpty.
     if (!isNoResultsTask(task)) {
+      const message =
+        task.status_message || `DataForSEO task failed (${task.status_code})`;
+      const classified = classifyRankCheckBillingError(
+        task.status_code,
+        message,
+        "/v3/serp/google/organic/task_get/advanced",
+      );
       return {
         status: "failed",
-        message:
-          task.status_message || `DataForSEO task failed (${task.status_code})`,
+        message: classified?.message ?? message,
+        ...(classified ? { code: classified.code } : {}),
       };
     }
     return {

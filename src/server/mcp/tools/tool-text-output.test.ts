@@ -266,6 +266,8 @@ describe("MCP tool text output (service-backed tools)", () => {
         scheduleInterval: "daily",
         devices: "desktop",
         serpDepth: 20,
+        lastCheckedAt: "2026-10-08T05:00:00.000Z",
+        lastSkipReason: "dataforseo_payment_required",
       },
       results: {
         run: {
@@ -286,8 +288,17 @@ describe("MCP tool text output (service-backed tools)", () => {
     expect(textContent(result)).toContain(
       "Latest run failed: Provider request timed out",
     );
+    expect(textContent(result)).toContain(
+      "Last failure reason: dataforseo_payment_required",
+    );
     expect(result.structuredContent).toMatchObject({
+      config: {
+        lastSuccessfulRunAt: "2026-10-08T05:00:00.000Z",
+        lastFailureReason: "dataforseo_payment_required",
+      },
       results: {
+        lastSuccessfulRunAt: "2026-10-08T05:00:00.000Z",
+        lastFailureReason: "dataforseo_payment_required",
         run: {
           status: "failed",
           errorMessage: "Provider request timed out",

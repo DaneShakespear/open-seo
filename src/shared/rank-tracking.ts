@@ -116,7 +116,98 @@ type ScheduledRankTrackingInterval = Exclude<
 export type RankTrackingSkipReason =
   | "plan_required"
   | "no_keywords"
-  | "insufficient_credits";
+  | "insufficient_credits"
+  | "dataforseo_payment_required"
+  | "no_results";
+
+// A failed rank check is retried on a short delay. After this many failed
+// attempts in the UTC day, the next attempt waits until the following UTC
+// midnight so a standing DataForSEO 402 cannot restart every scheduler tick.
+export const RANK_CHECK_RETRY_DELAY_MS = 3 * 60 * 60 * 1000;
+export const RANK_CHECK_MAX_ATTEMPTS_PER_UTC_DAY = 4;
+
+export function isDataforseoPaymentFailureSignal(
+  code: string | null | undefined,
+  message: string | null | undefined,
+): boolean {
+  if (code === "DATAFORSEO_PAYMENT_REQUIRED") return true;
+  const text = message?.toLowerCase() ?? "";
+  return (
+    text.includes("payment required") ||
+    text.includes("40200") ||
+    text.includes("http 402")
+  );
+}
+
+export function rankCheckFailureReason(input: {
+  batchError?: string | null;
+  failures: Array<{ code: string; message: string }>;
+}): Extract<
+  RankTrackingSkipReason,
+  "dataforseo_payment_required" | "no_results"
+> {
+  const payment = input.failures.some((failure) =>
+    isDataforseoPaymentFailureSignal(failure.code, failure.message),
+  );
+  if (
+    payment ||
+    isDataforseoPaymentFailureSignal(undefined, input.batchError)
+  ) {
+    return "dataforseo_payment_required";
+  }
+  return "no_results";
+}
+
+/**
+ * Next slot after a run that stored results. Weekly and daily advance from
+ * that run's timestamp, not from the previous schedule anchor: the anchor can
+ * sit several days away from the last stored check, and a later empty run
+ * then pushes the slot a full interval past it.
+ */
+export function nextCheckAtAfterSuccessfulRun(
+  interval: ScheduledRankTrackingInterval,
+  lastCheckedAtIso: string,
+): string {
+  const checkedAt = new Date(lastCheckedAtIso);
+  if (Number.isNaN(checkedAt.getTime())) {
+    throw new Error(`Invalid lastCheckedAt: ${lastCheckedAtIso}`);
+  }
+  if (interval === "monthly") {
+    return computeNextCheckAt("monthly", lastCheckedAtIso);
+  }
+  const days = interval === "daily" ? 1 : 7;
+  return new Date(checkedAt.getTime() + days * 86_400_000).toISOString();
+}
+
+/** `attemptsToday` includes the failure being recorded. */
+export function nextCheckAtAfterFailedRun(
+  now: Date,
+  attemptsToday: number,
+): string {
+  if (attemptsToday >= RANK_CHECK_MAX_ATTEMPTS_PER_UTC_DAY) {
+    const next = new Date(now);
+    next.setUTCHours(24, 0, 0, 0);
+    return next.toISOString();
+  }
+  return new Date(now.getTime() + RANK_CHECK_RETRY_DELAY_MS).toISOString();
+}
+
+export function rankTrackerHealth(config: {
+  lastCheckedAt?: string | null;
+  lastSkipReason?: string | null;
+  lastSuccessfulRunAt?: string | null;
+  lastFailureReason?: string | null;
+}): {
+  lastSuccessfulRunAt: string | null;
+  lastFailureReason: string | null;
+} {
+  return {
+    lastSuccessfulRunAt:
+      config.lastSuccessfulRunAt ?? config.lastCheckedAt ?? null,
+    lastFailureReason:
+      config.lastFailureReason ?? config.lastSkipReason ?? null,
+  };
+}
 
 export function estimateScheduledRankCheckCredits(
   keywordCount: number,
@@ -143,9 +234,11 @@ export function estimateScheduledRankCheckCredits(
 }
 
 export function isScheduledRankTrackingInterval(
-  interval: RankTrackingConfig["scheduleInterval"],
+  interval: string | null | undefined,
 ): interval is ScheduledRankTrackingInterval {
-  return interval !== "manual";
+  return (
+    interval === "daily" || interval === "weekly" || interval === "monthly"
+  );
 }
 
 function endOfMonthWithTime(source: Date, monthOffset = 0): Date {
