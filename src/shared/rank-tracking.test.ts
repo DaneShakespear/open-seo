@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   computeNextCheckAt,
   estimateRankCheckCredits,
+  nextCheckAtAfterFailedRun,
+  nextCheckAtAfterSuccessfulRun,
+  rankCheckFailureReason,
+  rankTrackerHealth,
   scheduleLabel,
 } from "./rank-tracking";
 
@@ -109,5 +113,66 @@ describe("rank tracking schedules", () => {
     expect(computeNextCheckAt("weekly", "2026-01-31T05:30:00.000Z")).toBe(
       "2026-03-14T05:30:00.000Z",
     );
+  });
+
+  it("schedules a successful weekly run 7 days after that check", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-12-01T00:00:00.000Z"));
+
+    // The old anchor walk would jump this to the next future Saturday.
+    expect(
+      nextCheckAtAfterSuccessfulRun("weekly", "2026-11-20T15:00:00.000Z"),
+    ).toBe("2026-11-27T15:00:00.000Z");
+  });
+
+  it("retries a failed run in 3 hours, then waits until the next UTC day", () => {
+    const now = new Date("2026-11-20T15:00:00.000Z");
+
+    expect(nextCheckAtAfterFailedRun(now, 1)).toBe("2026-11-20T18:00:00.000Z");
+    expect(nextCheckAtAfterFailedRun(now, 3)).toBe("2026-11-20T18:00:00.000Z");
+    expect(nextCheckAtAfterFailedRun(now, 4)).toBe("2026-11-21T00:00:00.000Z");
+  });
+});
+
+describe("rank check failure reasons", () => {
+  it("names a 402 or 40200 failure as dataforseo_payment_required", () => {
+    expect(
+      rankCheckFailureReason({
+        failures: [
+          {
+            code: "DATAFORSEO_PAYMENT_REQUIRED",
+            message: "DataForSEO HTTP 402",
+          },
+        ],
+      }),
+    ).toBe("dataforseo_payment_required");
+    expect(
+      rankCheckFailureReason({
+        failures: [
+          {
+            code: "INTERNAL_ERROR",
+            message: "DataForSEO status 40200: Payment Required",
+          },
+        ],
+      }),
+    ).toBe("dataforseo_payment_required");
+    expect(
+      rankCheckFailureReason({
+        batchError: null,
+        failures: [],
+      }),
+    ).toBe("no_results");
+  });
+
+  it("exposes the last stored check and the current failure reason", () => {
+    expect(
+      rankTrackerHealth({
+        lastCheckedAt: "2026-10-08T05:00:00.000Z",
+        lastSkipReason: "dataforseo_payment_required",
+      }),
+    ).toEqual({
+      lastSuccessfulRunAt: "2026-10-08T05:00:00.000Z",
+      lastFailureReason: "dataforseo_payment_required",
+    });
   });
 });

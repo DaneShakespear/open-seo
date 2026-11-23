@@ -174,4 +174,88 @@ describe("rank check task queue", () => {
       },
     });
   });
+
+  it("surfaces an HTTP 402 from task_post as a payment-required error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            status_code: 40200,
+            status_message: "Payment Required.",
+          }),
+          { status: 402, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    await expect(
+      postRankCheckTasks({
+        tasks: [{ keyword: "alpha", keywordId: "kw-1", device: "desktop" }],
+        locationCode: 2840,
+        languageCode: "en",
+        depth: 10,
+        targetDomain: "example.com",
+      }),
+    ).rejects.toMatchObject({ code: "DATAFORSEO_PAYMENT_REQUIRED" });
+  });
+
+  it("surfaces a body status 40200 as a payment-required error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          status_code: 20000,
+          status_message: "Ok.",
+          tasks: [
+            {
+              status_code: 40200,
+              status_message: "Payment Required.",
+              data: { tag: "kw-1:desktop" },
+            },
+          ],
+        }),
+      ),
+    );
+
+    await expect(
+      postRankCheckTasks({
+        tasks: [{ keyword: "alpha", keywordId: "kw-1", device: "desktop" }],
+        locationCode: 2840,
+        languageCode: "en",
+        depth: 10,
+        targetDomain: "example.com",
+      }),
+    ).rejects.toMatchObject({ code: "DATAFORSEO_PAYMENT_REQUIRED" });
+  });
+
+  it("surfaces a queued task_get status 40200 instead of dropping it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          status_code: 20000,
+          tasks: [
+            {
+              id: "task-a",
+              status_code: 40200,
+              status_message: "Payment Required.",
+            },
+          ],
+        }),
+      ),
+    );
+
+    const outcome = await fetchRankCheckTaskResult({
+      taskId: "task-a",
+      keywordId: "kw-1",
+      keyword: "alpha",
+      targetDomain: "example.com",
+    });
+
+    expect(outcome).toMatchObject({
+      status: "failed",
+      code: "DATAFORSEO_PAYMENT_REQUIRED",
+    });
+  });
 });

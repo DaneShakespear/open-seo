@@ -24,6 +24,7 @@ import {
   isScheduledRankTrackingInterval,
   MAX_CONFIGS_PER_PROJECT,
   rankCheckCostApprovalError,
+  rankTrackerHealth,
 } from "@/shared/rank-tracking";
 import {
   resolveKeywordDataLanguage,
@@ -316,13 +317,21 @@ async function refreshKeywordMetrics(
 // ---------------------------------------------------------------------------
 
 async function getConfigs(projectId: string) {
-  return RankTrackingRepository.getConfigsForProject(projectId);
+  const configs = await RankTrackingRepository.getConfigsForProject(projectId);
+  return configs.map((config) => ({
+    ...config,
+    ...rankTrackerHealth(config),
+  }));
 }
 
 async function getTracker(configId: string, projectId: string) {
   const config = await getValidatedConfig(configId, projectId);
   const results = await getLatestResults(configId, projectId);
-  return { config, results };
+  const health = rankTrackerHealth(config);
+  return {
+    config: { ...config, ...health },
+    results: { ...results, ...health },
+  };
 }
 
 async function requireRankCheckAccess(organizationId: string) {
